@@ -6,6 +6,7 @@ write session memory, and pick up exactly where the last session left off.
 
 Usage:
   GET  /connect           — full onboarding dump: context + status + punchlist + commands
+  POST /exec              — run any bash command  {"cmd": "...", "cwd": "...(optional)"}
   GET  /status            — quick system health
   GET  /context           — last session's handoff notes
   POST /context           — write session summary before leaving
@@ -144,6 +145,28 @@ class RelayHandler(BaseHTTPRequestHandler):
             save_memory(mem)
             self._json(200, {"saved": True, "keys": list(mem.keys())})
 
+        elif path == "exec":
+            bash = body.get("cmd", "")
+            cwd  = body.get("cwd", None)
+            if not bash:
+                self._json(400, {"error": "missing 'cmd'"}); return
+            try:
+                result = subprocess.run(
+                    bash, shell=True, capture_output=True, text=True,
+                    timeout=120, cwd=cwd
+                )
+                self._json(200, {
+                    "cmd": bash, "cwd": cwd,
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                    "rc": result.returncode,
+                    "ts": time.time(),
+                })
+            except subprocess.TimeoutExpired:
+                self._json(504, {"error": "timeout (120s)", "cmd": bash})
+            except Exception as e:
+                self._json(500, {"error": str(e), "cmd": bash})
+
         else:
             self._json(404, {"error": f"unknown POST: {path}"})
 
@@ -174,6 +197,7 @@ class RelayHandler(BaseHTTPRequestHandler):
             "punchlist": punch,
             "available_commands": list(SHELL_COMMANDS.keys()),
             "write_endpoints": {
+                "POST /exec":    {"cmd": "bash command string", "cwd": "/optional/path"},
                 "POST /context": {"ai": "str", "summary": "str", "active_tasks": ["..."], "notes": ["..."]},
                 "POST /memory":  {"any_key": "any_value"},
             },
