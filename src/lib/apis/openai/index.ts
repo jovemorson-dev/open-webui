@@ -239,6 +239,7 @@ export const generateOpenAIChatCompletion = async (
 			'Content-Type': 'application/json'
 		},
 		credentials: 'include',
+		signal: AbortSignal.timeout(300000),
 		body: JSON.stringify(body)
 	})
 		.then(async (res) => {
