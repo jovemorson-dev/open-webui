@@ -927,7 +927,10 @@
 		}
 	};
 
-	const onFocus = () => {};
+	const onFocus = () => {
+		// Scroll the input container into view when the virtual keyboard opens on iOS
+		chatInputContainerElement?.scrollIntoView({ block: 'nearest' });
+	};
 
 	const onBlur = () => {
 		shiftKey = false;
@@ -1611,6 +1614,7 @@
 															}
 														}
 													}}
+												on:focus={() => onFocus()}
 												/>
 											{/key}
 										{/key}
