@@ -6,7 +6,6 @@ write session memory, and pick up exactly where the last session left off.
 
 Usage:
   GET  /connect           — full onboarding dump: context + status + punchlist + commands
-  POST /exec              — run any bash command  {"cmd": "...", "cwd": "...(optional)"}
   GET  /status            — quick system health
   GET  /context           — last session's handoff notes
   POST /context           — write session summary before leaving
@@ -21,13 +20,17 @@ Usage:
   GET  /ai-logs           — AI session logs
   GET  /help              — list all endpoints
 
-Auth: Authorization: Bearer nexus-relay-21
+There is no arbitrary command-execution endpoint. Every GET route runs one
+of the fixed, read-only commands in SHELL_COMMANDS below — nothing else.
+
+Auth: Authorization: Bearer $NEXUS_RELAY_TOKEN (required — the process
+refuses to start if this env var isn't set; there is no default token).
 """
 import subprocess, json, os, time, sys, pathlib
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime
 
-TOKEN    = os.environ.get("NEXUS_RELAY_TOKEN", "nexus-relay-21")
+TOKEN    = os.environ.get("NEXUS_RELAY_TOKEN")
 HOST     = "127.0.0.1"
 PORT     = int(os.environ.get("NEXUS_RELAY_PORT", "4242"))
 HIVE     = "/mnt/Hive/Nexus"
@@ -145,28 +148,6 @@ class RelayHandler(BaseHTTPRequestHandler):
             save_memory(mem)
             self._json(200, {"saved": True, "keys": list(mem.keys())})
 
-        elif path == "exec":
-            bash = body.get("cmd", "")
-            cwd  = body.get("cwd", None)
-            if not bash:
-                self._json(400, {"error": "missing 'cmd'"}); return
-            try:
-                result = subprocess.run(
-                    bash, shell=True, capture_output=True, text=True,
-                    timeout=120, cwd=cwd
-                )
-                self._json(200, {
-                    "cmd": bash, "cwd": cwd,
-                    "stdout": result.stdout,
-                    "stderr": result.stderr,
-                    "rc": result.returncode,
-                    "ts": time.time(),
-                })
-            except subprocess.TimeoutExpired:
-                self._json(504, {"error": "timeout (120s)", "cmd": bash})
-            except Exception as e:
-                self._json(500, {"error": str(e), "cmd": bash})
-
         else:
             self._json(404, {"error": f"unknown POST: {path}"})
 
@@ -197,7 +178,6 @@ class RelayHandler(BaseHTTPRequestHandler):
             "punchlist": punch,
             "available_commands": list(SHELL_COMMANDS.keys()),
             "write_endpoints": {
-                "POST /exec":    {"cmd": "bash command string", "cwd": "/optional/path"},
                 "POST /context": {"ai": "str", "summary": "str", "active_tasks": ["..."], "notes": ["..."]},
                 "POST /memory":  {"any_key": "any_value"},
             },
@@ -232,6 +212,11 @@ class RelayHandler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    if not TOKEN:
+        sys.exit(
+            "[nexus-relay] FATAL: NEXUS_RELAY_TOKEN is not set. Refusing to start "
+            "without an explicit, random token — there is no built-in default."
+        )
     pathlib.Path(f"{HIVE}/Memory").mkdir(parents=True, exist_ok=True)
-    print(f"[nexus-relay] Listening on {HOST}:{PORT}  token={TOKEN}", flush=True)
+    print(f"[nexus-relay] Listening on {HOST}:{PORT}", flush=True)
     HTTPServer((HOST, PORT), RelayHandler).serve_forever()
