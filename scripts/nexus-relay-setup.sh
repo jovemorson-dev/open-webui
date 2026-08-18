@@ -6,7 +6,7 @@ set -euo pipefail
 
 RELAY_SCRIPT="/opt/nexus/relay/nexus-relay.py"
 RELAY_PORT="4242"
-RELAY_TOKEN="nexus-relay-21"
+RELAY_TOKEN="${NEXUS_RELAY_TOKEN:-$(openssl rand -hex 32)}"
 URL_FILE="/mnt/Hive/Nexus/Runtime/relay_url.txt"
 REPO_DIR="${REPO_DIR:-}"
 
